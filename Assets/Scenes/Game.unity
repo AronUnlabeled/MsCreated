@@ -430,8 +430,6 @@ MonoBehaviour:
   m_Script: {fileID: 1370077834, guid: 41cdb5d7253968f41a8659c7eba5c2a3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  _firstTime: 0
-  _hiddenComponents: 0
 --- !u!1 &235607847
 GameObject:
   m_ObjectHideFlags: 0
@@ -1126,12 +1124,14 @@ MonoBehaviour:
   moveSpeed: 5
   lookSpeed: 100
   groundCheck: {fileID: 1195024367}
-  groundCheckRadius: 0.4
+  groundCheckRadius: 0.2
   groundLayer:
     serializedVersion: 2
-    m_Bits: 64
-  jumpForce: 15
+    m_Bits: 8
+  jumpForce: 10
   jumpCooldown: 0.5
+  isGrounded: 1
+  canJump: 1
 --- !u!54 &957065666
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -1220,7 +1220,7 @@ Animator:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 957065663}
-  m_Enabled: 1
+  m_Enabled: 0
   m_Avatar: {fileID: 9000000, guid: 36078ab0369161e49a29d349ae3e0739, type: 3}
   m_Controller: {fileID: 9100000, guid: 911381364f48797498ac204a47426cf0, type: 2}
   m_CullingMode: 0
@@ -1245,7 +1245,7 @@ GameObject:
   - component: {fileID: 1057383102}
   - component: {fileID: 1057383101}
   - component: {fileID: 1057383100}
-  m_Layer: 6
+  m_Layer: 3
   m_Name: Plane
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1309,7 +1309,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: 1e848072835da144395100dc76173050, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -1444,7 +1444,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1195024367}
-  m_Layer: 6
+  m_Layer: 0
   m_Name: Ground Check
   m_TagString: Untagged
   m_Icon: {fileID: 0}

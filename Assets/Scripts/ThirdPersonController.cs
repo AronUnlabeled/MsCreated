@@ -33,17 +33,22 @@ public class ThirdPersonController : MonoBehaviour {
     [SerializeField] private LayerMask groundLayer;
 
     [Header("Jump Settings")]
-    [SerializeField] private float jumpForce = 5f;
-    [SerializeField] private float jumpCooldown = 0.5f;
+    [SerializeField, Range(5, 10)] private float jumpForce = 7f;
+    [SerializeField] private float jumpCooldown = 0.1f;
+    private float jumpTimeoutDelta = 0f;
+    private const float jumpTimeout = 0.15f;
     
     private Vector2 look, move;
     private float pitch, yaw;
-    private bool isGrounded = true, canJump = true;
-    private bool isRunning,isSprinting;
+    [SerializeField] private bool isGrounded = true; 
+    [SerializeField] private bool canJump = true;
+    private bool isRunning, isSprinting;
 
-    private void Awake() {
+    private void Start() {
         anim = GetComponent<Animator>();
         rb = GetComponent<Rigidbody>();
+
+        rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
     }
     private void Update() {
         CheckGround();
@@ -55,31 +60,46 @@ public class ThirdPersonController : MonoBehaviour {
         Move();
     }
     private void Jump() {
-        if (!isGrounded || !canJump) { 
-            return;
-        }
+        Debug.Log("Entered Jump");
+        if (!isGrounded || !canJump) return;
+
+        rb.velocity = new Vector3(rb.velocity.x, 0f, rb.velocity.z);
         rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+        
         canJump = false;
-        StartCoroutine(ResetJumpCoroutine());
+        isGrounded = false;
+
+        jumpTimeoutDelta = jumpTimeout;
 
         anim.SetTrigger(jumpParameter);
+        
+        StartCoroutine(ResetJumpCoroutine());
     }
     private IEnumerator ResetJumpCoroutine() {
-        
-        yield return new WaitForSeconds(0.25f);
-
-        var timeToGround = new WaitUntil(() => isGrounded);
-        yield return timeToGround;
 
         yield return new WaitForSeconds(jumpCooldown);
         canJump = true;
     }
+    private void CheckGround() {
+
+        if (jumpTimeoutDelta > 0f) {
+
+            jumpTimeoutDelta -= Time.deltaTime;
+            return;
+        }
+        isGrounded = Physics.CheckSphere(groundCheck.position, groundCheckRadius, groundLayer);
+        
+        //anim.SetBool(groundParameter, isGrounded);
+    }
     private void Look() {
+        
         if(look.sqrMagnitude >= lookThreshold) {
+            
             float deltaTimeMultiplier = Time.deltaTime * lookSpeed;
             yaw += look.x * deltaTimeMultiplier;
             pitch -= look.y * deltaTimeMultiplier;
         }
+        
         yaw = ClampAngle(yaw, float.MinValue, float.MaxValue);
         pitch = ClampAngle(pitch, bottomClamp, topClamp);
 
@@ -117,25 +137,18 @@ public class ThirdPersonController : MonoBehaviour {
         float normalizedSpeed = currentSpeed / (moveSpeed * 2);
         //anim for walking.
     }
-    private void CheckGround() {
-        isGrounded = Physics.CheckSphere(groundCheck.position, groundCheckRadius, groundLayer);
-        //anim.SetBool(groundParameter, isGrounded);
-    }
-    private void OnMove(InputValue value) {
-        move = value.Get<Vector2>();
-    }
+
+    private void OnMove(InputValue value) { move = value.Get<Vector2>(); }
     private void OnJump(InputValue value) {
-        if (value.isPressed) Jump();
+        Debug.Log("Enter Jump Input");
+        if (value.isPressed) {
+            Debug.Log("Enter Jump");
+            Jump(); 
+        } 
     }
-    private void OnRun(InputValue value) {
-        isRunning = value.isPressed;
-    }
-    private void OnSprint(InputValue value) {
-        isSprinting = value.isPressed;
-    }
-    private void OnLook(InputValue value) {
-        look = value.Get<Vector2>();
-    }
+    private void OnRun(InputValue value) { isRunning = value.isPressed; }
+    private void OnSprint(InputValue value) { isSprinting = value.isPressed; }
+    private void OnLook(InputValue value) { look = value.Get<Vector2>(); }
     private void OnDrawGizmosSelected() {
         if (groundCheck == null) return;
 
