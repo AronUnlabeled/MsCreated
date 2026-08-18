@@ -6,12 +6,15 @@ using UnityEngine.InputSystem;
 public class ThirdPersonController : MonoBehaviour {
 
     #region Animation Parameters
+    private const string idleParameter = "Idle";
     private const string speedParameter = "Speed";
     private const string jumpParameter = "Jump";
     private const string isRunningParameter = "IsRunning";
     private const string isSprintingParameter = "IsSprinting";
     private const string groundParameter = "Grounded";
     private const string fallingParameter = "Falling";
+    private const string attackParameter = "Attack";
+    private const string shootParameter = "Shoot";
     #endregion
     #region References & Variables
     [Header("Current State")]
@@ -28,8 +31,11 @@ public class ThirdPersonController : MonoBehaviour {
 
     [Header("Movement")]
     [SerializeField] private float currentSpeed = 0f;
-    [SerializeField] private float moveSpeed = 5f;
+    [SerializeField, Range(1, 25)] private float moveSpeed = 5f;
     [SerializeField] private float lookSpeed = 10f;
+    [HideInInspector] public Vector3 platformVelocity;
+    [HideInInspector] public Quaternion platformRotationDelta = Quaternion.identity;
+    [HideInInspector] public bool isRidingPlatform = false;
 
     [Header("Ground Settings")]
     [SerializeField] private Transform groundCheck;
@@ -42,6 +48,7 @@ public class ThirdPersonController : MonoBehaviour {
     [SerializeField, Range(1f, 5f)] private float riseGravityMultiplier = 1.5f;
     [SerializeField, Range(3f, 10f)] private float fallGravityMultiplier = 4.5f;
     [SerializeField, Range(0.1f, 5f)] private float jumpCooldown = 0.1f;
+    [SerializeField] private float lastHopTime = -10f;
     [SerializeField, Range(0.1f, 0.5f)] private float coyoteTimeDuration = 0.15f;
     private float coyoteTimeCounter;
     private float jumpTimeoutDelta = 0f;
@@ -60,10 +67,10 @@ public class ThirdPersonController : MonoBehaviour {
     private bool isRunning, isSprinting;
     #endregion
     private void Start() {
-        anim = GetComponent<Animator>();
         rb = GetComponent<Rigidbody>();
+        anim = GetComponentInChildren<Animator>();
 
-        rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
+        rb.constraints = RigidbodyConstraints.FreezeRotation;
     }
     #region Updates
     private void Update() {
@@ -154,11 +161,38 @@ public class ThirdPersonController : MonoBehaviour {
         
         StartCoroutine(ResetJumpCoroutine());
     }
-    private void MeleeAttack() {
+    public void Hop() {
         
+        if (Time.time - lastHopTime < 0.5f) return;
+        
+        lastHopTime = Time.time;
+        Jump();
+    }
+    public void ForcePlatformHop() {
+
+        rb.velocity = new(rb.velocity.x, 0f, rb.velocity.z);
+        platformVelocity = Vector3.zero;
+        rb.AddForce(Vector3.up * (jumpForce * 1.2f), ForceMode.Impulse);
+
+        canJump = false;
+        isGrounded = false;
+        coyoteTimeCounter = 0f;
+        jumpTimeoutDelta = jumpTimeout;
+
+        anim.SetTrigger(jumpParameter);
+        StartCoroutine(ResetJumpCoroutine());
+    }
+    private void MeleeAttack() {
+
+        SwitchState(PlayerState.Shooting);
+        anim.SetTrigger(attackParameter);
+        StartCoroutine(ReturnToMovement(0.3f));
     }
     private void Shoot() {
-        throw new NotImplementedException();
+
+        SwitchState(PlayerState.Shooting);
+        anim.SetTrigger(shootParameter);
+        StartCoroutine(ReturnToMovement(0.3f));
     }
 
     private void SwitchState(PlayerState newState) {
@@ -207,13 +241,17 @@ public class ThirdPersonController : MonoBehaviour {
     }
     private void Move() {
 
+        bool hasMovementInput = move.sqrMagnitude > 0.01f;
+
         float speedModifier = 1f;
         if (currentState == PlayerState.Melee) speedModifier = 0.2f;
         if (currentState == PlayerState.Shooting) speedModifier = 0.5f;
         SwitchState(PlayerState.Movement);
 
-        float targetSpeed = (isRunning ? moveSpeed * 1.5f : moveSpeed) * move.magnitude * speedModifier;
+        float targetSpeed = hasMovementInput ? (isRunning ? moveSpeed * 1.5f : moveSpeed) * move.magnitude * speedModifier : 0f;
         currentSpeed = Mathf.Lerp(currentSpeed, targetSpeed, Time.fixedDeltaTime * 10f);
+
+        if (!hasMovementInput && currentSpeed < 0.05f) currentSpeed = 0f;
 
         Vector3 forward = cameraTarget.forward;
         Vector3 right = cameraTarget.right;
@@ -242,21 +280,46 @@ public class ThirdPersonController : MonoBehaviour {
                 targetYVelocity += Physics.gravity.y * (fallGravityMultiplier - 1) * Time.fixedDeltaTime;
             }
         }
-        rb.velocity = new Vector3(moveDirection.x * currentSpeed, targetYVelocity, moveDirection.z * currentSpeed);
+        if (hasMovementInput) {
 
-        if (moveDirection.sqrMagnitude > 0.01f) {
+            Vector3 baseVelocity = new(moveDirection.x * currentSpeed, targetYVelocity, moveDirection.z * currentSpeed);
+            rb.velocity = baseVelocity + platformVelocity;
 
-            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(moveDirection), Time.fixedDeltaTime * 10f);
+            if (moveDirection.sqrMagnitude > 0.01f) {
 
-            /*Vector3 currentVelocity = rb.velocity;
-            rb.velocity = new Vector3(moveDirection.x * currentSpeed, currentVelocity.y, moveDirection.z * currentSpeed);*/
-        } /*else {
-            Vector3 currentVelocity = rb.velocity;
-            rb.velocity = new Vector3(moveDirection.x * currentSpeed, currentVelocity.y, moveDirection.z * currentSpeed);
+                Quaternion targetRotation = Quaternion.LookRotation(moveDirection);
+                Quaternion normalLook = Quaternion.Slerp(transform.rotation, targetRotation, Time.fixedDeltaTime * 10f);
+
+                if (isRidingPlatform) {
+
+                    Vector3 platformForward = platformRotationDelta * Vector3.forward;
+                    platformForward.y = 0f;
+
+                    if (platformForward.sqrMagnitude > 0.01f) {
+                        float platformYaw = Quaternion.LookRotation(platformForward).eulerAngles.y;
+                        transform.Rotate(0f, platformYaw * Time.fixedDeltaTime, 0f, Space.World);
+                    }
+                } else {
+                    rb.MoveRotation(normalLook);
+                }
+            }
+        } else {
+            
+            Vector3 stoppedHorizontalVelocity = Vector3.Lerp(new Vector3(currentVelocity.x, 0f, currentVelocity.z), Vector3.zero, Time.fixedDeltaTime * 15f);
+            Vector3 baseVelocity = new(stoppedHorizontalVelocity.x, targetYVelocity, stoppedHorizontalVelocity.z);
+            rb.velocity = baseVelocity + platformVelocity;
+
+            if (isRidingPlatform) {
+                Vector3 platformForward = platformRotationDelta * Vector3.forward;
+                platformForward.y = 0f;
+                if (platformForward.sqrMagnitude > 0.01f) {
+                    rb.MoveRotation(platformRotationDelta * transform.rotation);
+                }
+            }
+
+            anim.SetTrigger(idleParameter);
         }
-        float normalizedSpeed = currentSpeed / (moveSpeed * 2);*/
-        //anim for walking.
-        // anim.SetFloat(speedParameter, currentSpeed);
+        anim.SetFloat(speedParameter, currentSpeed);
     }
     #endregion
     #region Input Actions
